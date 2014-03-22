@@ -1,0 +1,920 @@
+﻿<!DOCTYPE HTML>
+
+<html lang="en">
+
+	<head>
+	
+		<meta charset="UTF-8">
+		
+		<meta name="viewport" content="width=device-width,
+		user-scalable=no, initial-scale=1, maximum-scale=1, user-scalable=0" />
+		
+		<meta name="apple-mobile-web-app-capable" content="yes" />
+		
+		<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+		
+		<style type="text/css">
+			body { margin: 0; padding: 0; background: #000;}
+			canvas { display: block; margin: 0 auto; background: #fff;}
+		</style>
+	
+	</head>
+	
+	<body>
+	
+		<canvas></canvas>
+		
+                <script>
+                    //GAME MADE BY FOLLOWING TUTORIAL AT http://mobile.smashingmagazine.com/2012/10/19/design-your-own-mobile-game/
+                    // // http://paulirish.com/2011/requestanimationframe-for-smart-animating
+                    // shim layer with setTimeout fallback
+                    window.requestAnimFrame = (function(){
+                      return  window.requestAnimationFrame       || 
+                              window.webkitRequestAnimationFrame || 
+                              window.mozRequestAnimationFrame    || 
+                              window.oRequestAnimationFrame      || 
+                              window.msRequestAnimationFrame     || 
+                              function( callback ){
+                                  window.setTimeout(callback, 1000 / 60);
+                              };
+                    })();
+
+                    //namespace game
+                    var SP={
+
+                        VERSION: 0.9,
+                        //variable setup
+                        WIDTH: 480,
+                        HEIGHT: 320,
+                        //adjust for screen resize
+                        SCALE: 1,
+                        offset: {top: 0, left: 0},
+
+                        RATIO: null, 
+                        currentWidth: null,
+                        currentHeight: null, 
+
+                        FPS: 60,
+
+                        PAUSE: true,
+                        //start in dead state in order to play transitions
+                        DEAD: true,
+
+                        PLAYER: null,
+
+                        canvas: null,
+                        ctx: null,
+
+                        //touch coordinates & stuff
+                        touch_down: false,
+                        touch_cor: {tx: 0, ty: 0},
+
+                        bg_color: '#6aff00',
+
+                        entities:[],
+
+                        //SCORE
+                        SCORE: 0,
+                        HIGHSCORE: 0,
+
+                        TIMER: 0,
+                        enemies: 0,
+                        enemy_gen: 5,
+                        spawn_cor: {x: 0, y:0},
+
+                        pulse: 1,
+                        shadowOffset: 1.5,
+
+                        //HUD RELATED AND SCREEN TRANSITIONS
+                        SPLASH_SHOWN: false,
+                        transition: false,
+                        screen_wiped: false,
+                        GO_HUD_x: 0,
+
+                        //SOUND OF MUSIC
+                        bounce_sfx: new Audio('bounce.wav'),
+                        dead_sfx: new Audio('dead.wav'),
+                        coin_sfx: new Audio('coin.wav'),
+                        spawn_sfx: new Audio('spawn.wav'),
+                        music: new Audio('PocketRocket.wav'),
+
+
+                        init: function()
+                        {
+                            //proportion/ratio
+                            SP.RATIO = SP.WIDTH / SP.HEIGHT;
+
+                            //change according to screen size:
+                            SP.currentWidth=SP.WIDTH;
+                            SP.currentHeight=SP.HEIGHT;
+
+                            //canvas element:
+                            SP.canvas = document.getElementsByTagName('canvas')[0];
+
+                            //set canvas size:
+                            SP.canvas.width = SP.WIDTH;
+                            SP.canvas.height = SP.HEIGHT;
+
+                            //canvas context, allow to interact with canvas API
+                            SP.ctx = SP.canvas.getContext('2d');
+
+                            //hide address bar according to OS
+                            SP.ua = navigator.userAgent.toLowerCase();
+                            SP.android = SP.ua.indexOf('android') > -1 ? true : false;
+                            SP.ios = (SP.ua.indexOf('iphone') > -1 || SP.ua.indexOf('ipad') > -1 )
+                                ? true :false;
+
+
+                            //window.removeEventListener('mousedown', arguments.callee, false);
+                            ///////////////////////////////// E V E N T   L I S T E N E R S /////////////////////////////////////////////
+                            //listen for click
+                            document.addEventListener("keydown", function(e){
+                                    console.log(e.keyCode);
+
+                                    if(e.keyCode===32)
+                                    {
+                                        if(SP.DEAD)
+                                        {
+                                            if(!SP.transition)
+                                            {
+                                                SP.transition=true;
+                                            }
+                                        }else{
+                                            if(SP.PAUSE)
+                                            {
+                                                SP.PAUSE=false;
+                                            }else{
+                                                SP.PAUSE=true;
+                                            }
+                                        }
+                                    }
+                            }, false);
+                            window.addEventListener('mousedown', function(e){
+                                e.preventDefault();
+                                SP.touch_down=true;
+                                SP.touch_cor.tx=e.pageX;
+                                SP.touch_cor.ty=e.pageY;
+                            }, false);
+
+                            //release
+                            window.addEventListener('mouseup', function(e){
+                                e.preventDefault();
+                                SP.touch_down=false;
+                            }, false);
+
+                            //listen for touches
+                            window.addEventListener('touchstart', function(e){
+                                e.preventDefault();
+                                //react to the most recent touch
+                                SP.touch_down=true;
+                                SP.touch_cor.tx=(e.touches[e.touches.length-1].pageX-SP.offset.left)/SP.SCALE;
+                                SP.touch_cor.ty=(e.touches[e.touches.length-1].pageY-SP.offset.left)/SP.SCALE;
+
+                                if(SP.DEAD)
+                                {
+                                    if(!SP.transition)
+                                    {
+                                        SP.transition=true;
+                                    }
+                                }else{
+                                    if(SP.PAUSE)
+                                    {
+                                        SP.PAUSE=false;
+                                    }
+                                    //Pause the game if three fingers (or more, freak) touch the screen.
+                                    if(e.touches.length>2)
+                                    {
+                                        if(!SP.PAUSE)
+                                        {
+                                            SP.PAUSE=true;
+                                        }
+                                    }
+                                }
+
+                            }, false);
+
+                            window.addEventListener('touchmove', function(e){
+                                //move events are not used, just disabled so screen wont scroll
+                                e.preventDefault();
+                            }, false);
+
+                            window.addEventListener('touchend', function(e){
+                                //same as above:
+                                e.preventDefault();
+                                //
+                                if(e.touches.length>0)
+                                {
+                                    SP.touch_cor.tx=(e.touches[e.touches.length-1].pageX-SP.offset.left)/SP.SCALE;
+                                    SP.touch_cor.ty=(e.touches[e.touches.length-1].pageY-SP.offset.left)/SP.SCALE;
+                                }else{
+                                    SP.touch_down=false;
+                                }
+                            }, false);
+
+                            ///get highscore
+                            if(!localStorage.highscore)
+                            {
+                                localStorage.highscore=0;
+                            }
+                            //
+                            SP.music.addEventListener('ended', function() {
+                                this.currentTime = 0;
+                                this.play();
+                            }, false);
+                            /////////////////////////////////////////////////////////////////////////////////////////////
+                            //resize ()
+                            SP.resize();
+
+                            //game loop
+                            SP.loop();
+                        },
+
+                        ////////////////////////////////////// R E S I Z E ///////////////////////////////////
+                        resize: function() {
+
+                            SP.currentHeight = window.innerHeight;
+                            // resize the width in proportion
+                            // to the new height
+                            SP.currentWidth = SP.currentHeight * SP.RATIO;
+
+                            // this will create some extra space on the
+                            // page, allowing us to scroll pass
+                            // the address bar, and thus hide it.
+                            if (SP.android || SP.ios) {
+                                document.body.style.height = (window.innerHeight + 50) + 'px';
+                            }
+
+                            // set the new canvas style width & height
+                            // note: our canvas is still 320x480 but
+                            // we're essentially scaling it with CSS
+                            SP.canvas.style.width = SP.currentWidth + 'px';
+                            SP.canvas.style.height = SP.currentHeight + 'px';
+
+                            // the amount by which the css resized canvas
+                            // is different to the actual (480x320) size.
+                            SP.scale = SP.currentWidth / SP.WIDTH;
+                            // position of canvas in relation to
+                            // the screen
+                            SP.offset.top = SP.canvas.offsetTop;
+                            SP.offset.left = SP.canvas.offsetLeft;
+
+                            // we use a timeout here as some mobile
+                            // browsers won't scroll if there is not
+                            // a small delay
+                            window.setTimeout(function() {
+                                    window.scrollTo(0,1);
+                            }, 1);
+                        },
+
+                        ///////////////////////////////////////// U P D A T E /////////////////////////////////
+                        update: function()
+                        {
+                            var i;
+                            if(SP.SCORE>0)
+                            {
+                                SP.TIMER++;
+                                if(SP.TIMER%10===0)
+                                {
+                                    if(SP.pulse===1)
+                                    {
+                                        SP.pulse=2;
+                                    }else if(SP.pulse===2){
+                                        SP.pulse=1;
+                                    }
+                                }
+                            }
+                            if(Math.floor(SP.TIMER/SP.FPS)===SP.enemy_gen)
+                            {
+                                if(SP.PLAYER.x >= SP.WIDTH/2)
+                                {
+                                    SP.spawn_cor.x=32;
+                                }else{
+                                    SP.spawn_cor.x=SP.WIDTH-32;
+                                }
+                                if(SP.PLAYER.y >= SP.HEIGHT/2)
+                                {
+                                    SP.spawn_cor.y=32;
+                                }else{
+                                    SP.spawn_cor.y=SP.HEIGHT-32;
+                                }
+                                SP.entities.push(new SP.Enemy(SP.spawn_cor.x, SP.spawn_cor.y));
+                                //SP.aEnemies.push(SP.entities[SP.entities.length-1]);
+                                SP.enemy_gen+=10+SP.enemies*5;
+                                SP.enemies++;
+
+                                SP.spawn_sfx.play();   
+                            }
+
+                            for(i=0;i<SP.entities.length;i++)
+                            {
+                                //update each entity
+                                SP.entities[i].update();
+
+
+                                //check if flagged for removal
+                                if(SP.entities[i].remove)
+                                {
+                                    SP.entities.splice(i, 1);
+
+                                }
+                            }
+
+                        },
+
+                        ///////////////////////////////////////// R E N D E R ////////////////////////
+                        render: function()
+                        {
+                            var i;
+
+                            SP.Draw.rect(0, 0, SP.WIDTH, SP.HEIGHT, SP.bg_color);
+
+                            /////////////////////////////////////////////////HUD///////////////////////////////////
+                            if(!SP.SPLASH_SHOWN)
+                            {
+                                if(SP.DEAD)
+                                {
+                                    if(!SP.screen_wiped)
+                                    {
+                                        SP.Draw.roundedRect(SP.GO_HUD_x-12, SP.HEIGHT/2-60, 12, 400, 100, '#000000');
+                                        SP.Draw.text('SUPER PHOBIA', 24+SP.GO_HUD_x, SP.HEIGHT/2, 48, '#ffffff');
+                                        SP.Draw.text('a game by MNWS', 24+SP.GO_HUD_x, SP.HEIGHT/2+16, 16, '#ffffff');
+                                        //
+                                        //SP.Draw.roundedRect(SP.WIDTH-64+10, SP.HEIGHT-26, 12, 64, 40, '#000000');//VERSION
+                                        SP.Draw.text('v'+SP.VERSION, SP.WIDTH-46, SP.HEIGHT-6, 16, '#000000');
+                                        SP.Draw.text('v'+SP.VERSION, SP.WIDTH-48, SP.HEIGHT-8, 16, '#ffffff');
+                                    }
+                                    if(SP.transition)
+                                    {
+                                        SP.Draw.rect(SP.GO_HUD_x-(SP.WIDTH+40), 0, SP.WIDTH+40, SP.HEIGHT, '#000000');
+                                    }
+                                }
+
+                            }else{
+                                //SP.Draw.roundedRect(0-10, 0-10, 12, 48, 40, '#000000');//SCORE
+                                //SP.Draw.roundedRect(SP.WIDTH-72+10, -10, 12, 72, 40, '#000000');//VERSION
+
+                                if(SP.SCORE<10)
+                                {
+                                    SP.Draw.text('0'+SP.SCORE, 6, 22, 16, '#000000');
+                                    SP.Draw.text('0'+SP.SCORE, 4, 20, 16, '#ffffff');
+                                }else{
+                                    SP.Draw.text(SP.SCORE, 6, 22, 16, '#000000');
+                                    SP.Draw.text(SP.SCORE, 4, 20, 16, '#ffffff');
+                                }
+                                if(Math.floor((SP.enemy_gen-SP.TIMER/SP.FPS)*100)/100<10)
+                                {
+                                    if(Math.floor((SP.enemy_gen-SP.TIMER/SP.FPS)*100)/100===Math.floor(Math.floor((SP.enemy_gen-SP.TIMER/SP.FPS)*100)/100))
+                                    {
+                                        SP.Draw.text('0'+Math.floor((SP.enemy_gen-SP.TIMER/SP.FPS)*100)/100+'.00', SP.WIDTH-54, 22, 16, '#000000');
+                                        SP.Draw.text('0'+Math.floor((SP.enemy_gen-SP.TIMER/SP.FPS)*100)/100+'.00', SP.WIDTH-56, 20, 16, '#ffffff');
+                                    }else{
+                                        SP.Draw.text('0'+Math.floor((SP.enemy_gen-SP.TIMER/SP.FPS)*100)/100, SP.WIDTH-54, 22, 16, '#000000');
+                                        SP.Draw.text('0'+Math.floor((SP.enemy_gen-SP.TIMER/SP.FPS)*100)/100, SP.WIDTH-56, 20, 16, '#ffffff');
+                                    }
+                                }else{
+                                    if(Math.floor((SP.enemy_gen-SP.TIMER/SP.FPS)*100)/100===Math.floor(Math.floor((SP.enemy_gen-SP.TIMER/SP.FPS)*100)/100))
+                                    {
+                                        SP.Draw.text(Math.floor((SP.enemy_gen-SP.TIMER/SP.FPS)*100)/100+'.00', SP.WIDTH-54, 22, 16, '#000000');
+                                        SP.Draw.text(Math.floor((SP.enemy_gen-SP.TIMER/SP.FPS)*100)/100+'.00', SP.WIDTH-56, 20, 16, '#ffffff');
+                                    }else{
+                                        SP.Draw.text(Math.floor((SP.enemy_gen-SP.TIMER/SP.FPS)*100)/100, SP.WIDTH-54, 22, 16, '#000000');
+                                        SP.Draw.text(Math.floor((SP.enemy_gen-SP.TIMER/SP.FPS)*100)/100, SP.WIDTH-56, 20, 16, '#ffffff');
+                                    }
+                                }
+                                //RENDER THE ACTORS
+                                for(i=0;i<SP.entities.length;i++)
+                                {
+                                    //render each entity
+                                    SP.entities[i].render();
+                                }
+                                if(SP.DEAD)
+                                {
+                                    if(!SP.screen_wiped)
+                                    {
+                                        SP.PAUSE=true;
+                                       // delete localStorage.highscore;
+                                        //SP.Draw.clear();
+                                        SP.Draw.roundedRect(SP.GO_HUD_x-12, SP.HEIGHT/2-60, 12, 240, 120, '#000000');
+
+                                        SP.Draw.text('GAME OVER!', 8+SP.GO_HUD_x, SP.HEIGHT/2-24, 24, '#ffffff');
+                                        //
+                                        if(SP.SCORE>SP.HIGHSCORE)
+                                        {
+                                            SP.Draw.text('New Highscore         '+SP.SCORE, 16+SP.GO_HUD_x, SP.HEIGHT/2+4, 16, '#ffffff');
+                                            SP.Draw.text('Previous Best          '+SP.HIGHSCORE, 16+SP.GO_HUD_x, SP.HEIGHT/2+20, 16, '#ffffff'); 
+                                        }else{
+                                            SP.Draw.text('Your Score                  '+SP.SCORE, 16+SP.GO_HUD_x, SP.HEIGHT/2+4, 16, '#ffffff');
+                                            SP.Draw.text('Personal Best         '+SP.HIGHSCORE, 16+SP.GO_HUD_x, SP.HEIGHT/2+20, 16, '#ffffff');
+                                        }
+                                        SP.Draw.text('Time Played               '+Math.floor(SP.TIMER/SP.FPS)+' sec', 16+SP.GO_HUD_x, SP.HEIGHT/2+36, 16, '#ffffff');
+                                    }
+                                    if(SP.transition)
+                                    {
+                                        SP.Draw.rect(SP.GO_HUD_x-(SP.WIDTH+40), 0, SP.WIDTH+40, SP.HEIGHT, '#000000');
+                                    }
+
+                                }
+                            }
+                        },
+
+                        /////////////////////////////////////// L O O P /////////////////////////////////
+                        loop: function()
+                        {
+                            requestAnimFrame(SP.loop);
+
+                            if(!SP.PAUSE && ! SP.DEAD)
+                            {
+                                SP.update();    
+                            }
+
+                            //DO THE FANCY TRANSITION THING YA CUNT
+                            if(SP.DEAD)
+                            {
+                                if(!SP.transition)
+                                {
+                                    SP.GO_HUD_x+=Math.floor((0-SP.GO_HUD_x)/2);
+                                }else{
+                                    //wipe the screen
+                                    if(!SP.screen_wiped)
+                                    {
+                                        SP.GO_HUD_x+=((SP.WIDTH+40)-SP.GO_HUD_x)/8;
+                                        if(Math.ceil(SP.GO_HUD_x)===(SP.WIDTH+40))
+                                        {
+                                            SP.screen_wiped=true;
+                                            SP.clear();
+                                        }
+                                    }else{
+                                        //go back if screen has been wiped
+                                        SP.GO_HUD_x+=(0-SP.GO_HUD_x)/8;
+                                        if(Math.floor(SP.GO_HUD_x)===0)
+                                        {
+                                            SP.reset();
+                                        }
+                                    }
+                                }
+                            }
+                            SP.render();
+                        },
+
+                        clear: function()
+                        {
+
+                            SP.entities.length=0;
+                            SP.SCORE=0;
+                            SP.TIMER=0;
+                            SP.pulse=1;
+
+                            SP.enemies=0;
+                            SP.enemy_gen=5;
+                            if(!SP.SPLASH_SHOWN)
+                            {
+                                SP.SPLASH_SHOWN=true;
+                            } 
+                            SP.bg_color=SP.getRandomColor();
+                            //setup the players of this here game
+                            SP.entities.push(new SP.Player(SP.WIDTH/2, SP.HEIGHT/2));
+                            SP.PLAYER=SP.entities[0];
+                            SP.entities.push(new SP.Coin(SP.PLAYER.x+75, SP.PLAYER.y+100));
+                        },
+
+                        reset: function()
+                        {
+                            //reset transition related variables
+                            SP.GO_HUD_x=-240;
+                            SP.DEAD=false;
+                            SP.transition=false;
+                            SP.PAUSE=false;
+                            SP.screen_wiped=false;
+
+                            SP.music.play();
+                        }
+
+                    };
+                    //typical game loop:
+
+                    //pull user input
+                    //update character and process collisions
+                    //render characters on the screen
+                    //repeat
+
+                    SP.hitTest=function(a, b, accuracy)
+                    {
+                        //can hit yourself fool
+                        if(a===b)
+                        {
+                            return false;
+                        }
+
+                        var ah=a.h*accuracy;
+                        var aw=a.w*accuracy;
+                        var bh=b.h*accuracy;
+                        var bw=b.w*accuracy;
+
+                        if(a.x+aw/2 < b.x-bw/2 || a.x-aw/2 > b.x+bw/2 || a.y+ah/2 < b.y-bh/2 || a.y-ah/2 > b.y+bh/2)
+                        {
+                            return false;
+                        }else{
+                            return true;
+                        }
+                    };
+
+                    SP.distance=function(a, b)
+                    {
+                            var d=Math.round(Math.abs(a.y-b.y));
+                            var e=Math.round(Math.abs(a.x-b.x));
+
+                            return Math.round(Math.sqrt(d*d+e*e));
+                    };
+
+                    SP.getRandomColor=function() {
+                        // This function generates vibrant, "evenly spaced" colours (i.e. no clustering). This is ideal for creating easily distinguishable vibrant markers in Google Maps and other apps.
+                        // Adam Cole, 2011-Sept-14
+                        // HSV to RBG adapted from: http://mjijackson.com/2008/02/rgb-to-hsl-and-rgb-to-hsv-color-model-conversion-algorithms-in-javascript
+                        var r, g, b;
+                        var h = Math.random()*4;
+                        var i = ~~(h * 6);
+                        var f = h * 6 - i;
+                        var q = 1 - f;
+                        switch(i % 6){
+                            case 0: r = 1, g = f, b = 0; break;
+                            case 1: r = q, g = 1, b = 0; break;
+                            case 2: r = 0, g = 1, b = f; break;
+                            case 3: r = 0, g = q, b = 1; break;
+                            case 4: r = f, g = 0, b = 1; break;
+                            case 5: r = 1, g = 0, b = q; break;
+                        }
+                        var c = "#" + ("00" + (~ ~(r * 255)).toString(16)).slice(-2) + ("00" + (~ ~(g * 255)).toString(16)).slice(-2) + ("00" + (~ ~(b * 255)).toString(16)).slice(-2);
+                        return (c);
+                    };
+
+                    SP.getNegativeColor=function(sourceColor)
+                    {  
+                        var color = sourceColor;
+                        color = color.substring(1);           // remove #
+                        color = parseInt(color, 16);          // convert to integer
+                        color = 0xFFFFFF ^ color;             // invert three bytes
+                        color = color.toString(16);           // convert to hex
+                        color = ("000000" + color).slice(-6); // pad with leading zeros
+                        color = "#" + color;                  // prepend #
+                        return color;
+                    };
+
+                    SP.Draw=
+                    {
+
+                        clear: function()
+                        {
+                            SP.ctx.clearRect(0, 0, SP.WIDTH, SP.HEIGHT);
+                        }, 
+
+                        rect: function(x, y, w, h, col)
+                        {
+                            SP.ctx.fillStyle = col;
+                            SP.ctx.fillRect(x, y, w, h);
+                        },
+
+                        circle: function(x, y, r, col, fill, thin_that_shit)
+                        {
+                            SP.ctx.fillStyle = col;
+                            SP.ctx.strokeStyle=col;
+                            if(fill===true)
+                            {
+                                SP.ctx.lineWidth=2;
+                            }else{
+                                SP.ctx.lineWidth=1+SP.pulse*2;
+                            }
+                            if(thin_that_shit>0)
+                            {
+                                //SP.ctx.lineWidth=thin_that_shit;
+                            }
+                            SP.ctx.beginPath();
+                            SP.ctx.arc(x, y, r, 0, Math.PI*2, true);
+                            SP.ctx.stroke();
+                            if(fill===true)
+                            {
+                                SP.ctx.fill();
+                            }
+                        },
+
+                        roundedRect: function(x, y, r, w, h, col)
+                        {
+                            SP.ctx.fillStyle=col;
+                            SP.ctx.beginPath();
+                            //
+                            SP.ctx.moveTo(x+r, y);
+                            SP.ctx.lineTo(x+w-r, y);
+                            //
+                            SP.ctx.arcTo(x+w, y, x+w, y+r, r);
+                            SP.ctx.lineTo(x+w, y+h-r);
+                            //
+                            SP.ctx.arcTo(x+w, y+h, x+w-r, y+h, r);
+                            SP.ctx.lineTo(x+r, y+h);
+                            //
+                            SP.ctx.arcTo(x, y+h, x, y+h-r, r);
+                            SP.ctx.lineTo(x, y+r);
+                            //
+                            SP.ctx.arcTo(x, y, x+r, y, r);
+                            SP.ctx.closePath();
+
+                            SP.ctx.lineWidth = 2;
+                            //SP.ctx.stroke();
+                            SP.ctx.fill();
+                        },
+
+                        text: function(string, x, y, size, col)
+                        {
+                            SP.ctx.font='normal '+size+'px Avengeance Mightiest Avenger';
+                            SP.ctx.fillStyle = col;
+                            SP.ctx.fillText(string, x, y);
+                        },
+
+                        triangle: function(x, y, r, deg, col, fill)
+                        {
+                            var degCon=Math.PI/180;
+                            SP.ctx.fillStyle=col;
+                            SP.ctx.strokeStyle=col;
+                            SP.ctx.lineWidth=1+SP.pulse*2;
+                            SP.ctx.beginPath();
+                            SP.ctx.moveTo(x+Math.cos((135+deg)*degCon)*r, y+Math.sin((135+deg)*degCon)*r);
+                            SP.ctx.lineTo(x+Math.cos((0+deg)*degCon)*r, y+Math.sin((0+deg)*degCon)*r);
+                            SP.ctx.lineTo(x+Math.cos((225+deg)*degCon)*r, y+Math.sin((225+deg)*degCon)*r);
+                            SP.ctx.closePath();
+                            SP.ctx.stroke();
+                            if(fill===true)
+                            {
+                                SP.ctx.fill();
+                            }
+                        }
+                    };
+
+                    SP.Player = function(x, y)
+                    {
+
+                        this.type='player';
+
+                        this.x=x;
+                        this.y=y;
+                        this.w=20;
+                        this.h=20;
+
+                        this.vy=0;
+                        this.vx=0;
+                        this.ay=0.3;
+                        this.ax=0.3;
+                        this.fri=0.94;
+
+                        this.rotation=0;
+
+                        this.remove=false;
+
+                        this.update=function()
+                        {
+                            this.x+=this.vx;
+                            this.y+=this.vy;
+
+                            this.vx*=this.fri;
+                            this.vy*=this.fri;
+
+
+                            if(SP.touch_down)
+                            {
+                                if(SP.touch_cor.tx<SP.currentWidth/2+SP.offset.left)
+                                {
+                                    this.vx+=this.ax;
+                                }else if(SP.touch_cor.tx>=SP.currentWidth/2+SP.offset.left){
+                                    this.vy+=this.ay;
+                                }
+                            }
+
+                            this.rotation+=(this.vy*this.vx)*2;
+
+                            //bounds
+                            if(this.x+this.w/2>SP.WIDTH)
+                            {
+                                this.x=SP.WIDTH-this.w/2;
+                                this.vx*=-1;
+                                this.ax*=-1;
+                                SP.bounce_sfx.play();
+                            }
+                            if(this.x-this.w/2<0)
+                            {
+                                this.x=this.w/2;
+                                this.ax*=-1;
+                                this.vx*=-1;
+                                 SP.bounce_sfx.play();
+                            }
+                            if(this.y-this.h/2<0)
+                            {
+                                this.y=this.h/2;
+                                this.ay*=-1;
+                                this.vy*=-1;
+                                 SP.bounce_sfx.play();
+                            }
+                            if(this.y+this.h/2>SP.HEIGHT)
+                            {
+                                this.y=SP.HEIGHT-this.h/2;
+                                this.ay*=-1;
+                                this.vy*=-1;
+                                 SP.bounce_sfx.play();
+                            }
+
+                            //trail
+                            if(Math.round(Math.sqrt(this.vy*this.vy+this.vx*this.vx))>1)
+                            {
+                                if(SP.TIMER%4===0 && SP.SCORE>0)
+                                {
+                                    SP.entities.push(new SP.Particle(this.x-this.vx*4, this.y-this.vy*4, Math.sqrt(this.vy*this.vy+this.vx*this.vx) ));
+                                }
+                            }
+
+                        };
+
+                        this.render=function()
+                        {
+                            //SP.Draw.rect(this.x-this.w/2, this.y-this.h/2, this.w, this.h, 'red');
+                            SP.Draw.triangle(this.x+SP.shadowOffset, this.y+SP.shadowOffset, this.w/2, this.rotation, '#000000', false);
+                            SP.Draw.triangle(this.x, this.y, this.w/2, this.rotation, SP.getNegativeColor(SP.bg_color), false);
+                        };
+
+                    };
+
+                    SP.Enemy = function(x, y)
+                    {
+                        this.type='enemy';
+
+                        this.x=x;
+                        this.y=y;
+                        this.w=16;
+                        this.h=16;
+
+                        this.speed=0.03;
+                        this.vy=0;
+                        this.vx=0;
+                        this.ay;
+                        this.ax;
+                        this.dx;
+                        this.dy;
+                        this.radians;
+                        this.degrees;
+
+                        this.remove=false;
+
+                        //update
+                        this.update=function()
+                        {
+
+                            this.dx=(SP.PLAYER.x)-this.x;
+                            this.dy=(SP.PLAYER.y)-this.y;
+
+                            this.radians=Math.atan2(this.dx, this.dy);
+                            this.degrees=Math.atan2(this.dy, this.dx)*180/Math.PI;
+
+                            this.ay=Math.cos(this.radians)*this.speed;
+                            this.ax=Math.sin(this.radians)*this.speed;
+
+                            this.vy+=this.ay;
+                            this.vx+=this.ax;
+
+                            this.x+=this.vx;
+                            this.y+=this.vy;
+
+                            //bounds
+                            if(this.x+this.w/2>SP.WIDTH)
+                            {
+                                this.x=SP.WIDTH-this.w/2;
+                                this.vx*=-0.4;
+                            }
+                            if(this.x-this.w/2<0)
+                            {
+                                this.x=this.w/2;
+                                this.vx*=-0.4;
+                            }
+                            if(this.y+this.h/2>SP.HEIGHT)
+                            {
+                                this.y=SP.HEIGHT-this.h/2;
+                                this.vy*=-0.4;
+                            }
+                            if(this.y-this.h/2<0)
+                            {
+                                this.y=this.h/2;
+                                this.vy*=-0.4;
+                            }
+
+                            //hittest
+                            if(SP.hitTest(this, SP.PLAYER, 0.8))
+                            {
+                                SP.music.pause();
+                                SP.music.currentTime=0;
+                                SP.dead_sfx.play();
+                                SP.PLAYER.remove=true;
+                                SP.DEAD=true;
+                                SP.HIGHSCORE=localStorage.highscore;
+                                if(SP.SCORE>SP.HIGHSCORE)
+                                {
+                                    localStorage.highscore=SP.SCORE;
+                                }
+                            }
+
+                            //trail
+                            if(Math.round(Math.sqrt(this.vy*this.vy+this.vx*this.vx))>1)
+                            {
+                                if(SP.TIMER%4===0 && SP.SCORE>0)
+                                {
+                                    SP.entities.push(new SP.Particle(this.x-this.vx*4, this.y-this.vy*4, Math.sqrt(this.vy*this.vy+this.vx*this.vx) ));
+                                }
+                            }
+
+                        };
+
+                        this.render=function()
+                        {
+                            SP.Draw.triangle(this.x+SP.shadowOffset, this.y+SP.shadowOffset, this.w/2+2-(SP.pulse-1)*4, this.degrees, '#000000', true);
+                            SP.Draw.triangle(this.x, this.y, this.w/2+2-(SP.pulse-1)*4, this.degrees, SP.getNegativeColor(SP.bg_color), true);
+
+                        };
+
+                    };
+
+                    SP.Coin = function(x, y)
+                    {
+                        this.type='coin';
+
+                        this.x=x;
+                        this.y=y;
+                        this.r=8;
+                        this.w=this.r*2;
+                        this.h=this.r*2;
+
+                        this.rotation=0;
+
+                        this.remove=false;
+
+                        //update
+                        this.update=function()
+                        {
+                            //hittest    
+                            this.rotation++;
+                            if(SP.hitTest(SP.PLAYER, this, 1))
+                            {
+                                SP.coin_sfx.play();
+                                this.remove=true;
+                                SP.SCORE++;
+                                while(SP.distance(this, SP.PLAYER)<60)
+                                {
+                                    this.x=Math.random()*(SP.WIDTH-40)+20;
+                                    this.y=Math.random()*(SP.HEIGHT-40)+20;
+                                }
+                                SP.entities.push(new SP.Coin(this.x, this.y));
+                                //get new background color
+                                SP.bg_color=SP.getRandomColor();
+                            }
+
+                        };
+
+                        this.render=function()
+                        {
+                            SP.Draw.circle(this.x+SP.shadowOffset, this.y+SP.shadowOffset, this.r-(SP.pulse-1)*2, '#000000', false, 0);
+                            SP.Draw.circle(this.x, this.y, this.r-(SP.pulse-1)*2, SP.getNegativeColor(SP.bg_color), false, 0);
+
+                        };
+
+                    };
+
+                    SP.Particle=function(x, y, size)
+                    {
+                        this.type='particle';
+
+                        this.x=x;
+                        this.y=y;
+                        this.size=size;
+
+                        this.remove=false;
+
+                        this.update=function()
+                        {
+                            if(SP.TIMER%4===0)
+                            {
+                                this.size--;
+                                if(this.size<=0)
+                                {
+                                    this.remove=true;
+                                }
+                            }
+                        };
+
+                        this.render=function()
+                        {
+                            SP.Draw.circle(this.x+SP.shadowOffset, this.y+SP.shadowOffset, this.size, '#000000', true, 0);
+                            SP.Draw.circle(this.x, this.y, this.size, SP.getNegativeColor(SP.bg_color), true, 0);
+                        };
+
+                    };
+
+
+                    window.addEventListener('load', SP.init, false);
+                    window.addEventListener('resize', SP.resize, false);
+                </script>
+		
+	</body>
+
+</html>
